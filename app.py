@@ -17,20 +17,43 @@ def get_file_id(url):
         return re.search(r"id=([a-zA-Z0-9_-]+)", url).group(1)
     return None
 
-# Google Drive থেকে স্ট্রিম পাওয়া (virus scan confirm handle করে)
+# ================== ফিক্সড স্ট্রিম ফাংশন (১০০ এমবি+ এখন কাজ করবে) ==================
 def get_gdrive_stream(file_id):
     session = requests.Session()
     url = f"https://docs.google.com/uc?export=download&id={file_id}"
     
-    response = session.get(url, stream=True, allow_redirects=True)
+    # Step 1: প্রথমে চেক করি (ছোট HTML ওয়ার্নিং পেজ, কোনো সমস্যা নেই)
+    check_response = session.get(url, allow_redirects=True)
     
-    # Virus scan confirm token হ্যান্ডেল
-    for key, value in response.cookies.items():
+    token = None
+    
+    # পুরনো কুকি মেথড (ছোট ফাইলের জন্য)
+    for key, value in check_response.cookies.items():
         if key.startswith("download_warning"):
-            confirm_token = value
-            params = {"confirm": confirm_token}
-            response = session.get(url, params=params, stream=True)
+            token = value
             break
+    
+    # নতুন HTML ওয়ার্নিং মেথড (১০০ এমবি+ বড় ফাইলের জন্য)
+    if not token and ("virus scan warning" in check_response.text.lower() or "Download anyway" in check_response.text):
+        # ফর্ম থেকে confirm token বের করি (তোমার দেওয়া HTML-এ "t" আছে)
+        match = re.search(r'name="confirm"\s+value="([a-zA-Z0-9_-]+)"', check_response.text)
+        if match:
+            token = match.group(1)
+        else:
+            # ফলব্যাক (যদি অন্য ফরম্যাট হয়)
+            match = re.search(r'confirm=([a-zA-Z0-9_-]+)', check_response.text)
+            if match:
+                token = match.group(1)
+            else:
+                token = "t"
+    
+    # Step 2: এখন সঠিক টোকেন দিয়ে স্ট্রিমিং শুরু
+    if token:
+        params = {"confirm": token}
+        response = session.get(url, params=params, stream=True, allow_redirects=True)
+    else:
+        # কোনো ওয়ার্নিং নেই → সরাসরি স্ট্রিম
+        response = session.get(url, stream=True, allow_redirects=True)
     
     return response
 
@@ -44,7 +67,6 @@ def upload_to_pixeldrain(gdrive_stream, filename):
         "User-Agent": "Mozilla/5.0"
     }
     
-    # chunked streaming upload
     def generate():
         for chunk in gdrive_stream.iter_content(chunk_size=1024*1024):  # 1MB chunk
             if chunk:
@@ -66,7 +88,7 @@ def index():
         try:
             gdrive_response = get_gdrive_stream(file_id)
             
-            # ফাইলের নাম বের করা (GD header থেকে)
+            # ফাইলের নাম বের করা
             if not custom_name:
                 cd = gdrive_response.headers.get("Content-Disposition", "")
                 if "filename=" in cd:
