@@ -17,45 +17,49 @@ def get_file_id(url):
         return re.search(r"id=([a-zA-Z0-9_-]+)", url).group(1)
     return None
 
-# ================== ফিক্সড স্ট্রিম ফাংশন (১০০ এমবি+ এখন কাজ করবে) ==================
+# ================== নতুন ফিক্সড স্ট্রিম ফাংশন (১০০ এমবি+ এখন কাজ করবে) ==================
 def get_gdrive_stream(file_id):
     session = requests.Session()
     url = f"https://docs.google.com/uc?export=download&id={file_id}"
     
-    # Step 1: প্রথমে চেক করি (ছোট HTML ওয়ার্নিং পেজ, কোনো সমস্যা নেই)
-    check_response = session.get(url, allow_redirects=True)
+    # প্রথম চেক
+    response = session.get(url, allow_redirects=True)
     
-    token = None
+    # ছোট ফাইল → সরাসরি ফাইল স্ট্রিম পাওয়া গেছে
+    if response.status_code == 200 and "content-disposition" in [k.lower() for k in response.headers]:
+        content_type = response.headers.get("Content-Type", "").lower()
+        if "text/html" not in content_type:
+            return response
     
-    # পুরনো কুকি মেথড (ছোট ফাইলের জন্য)
-    for key, value in check_response.cookies.items():
-        if key.startswith("download_warning"):
-            token = value
-            break
+    # বড় ফাইল → virus scan warning page এসেছে
+    html = response.text
     
-    # নতুন HTML ওয়ার্নিং মেথড (১০০ এমবি+ বড় ফাইলের জন্য)
-    if not token and ("virus scan warning" in check_response.text.lower() or "Download anyway" in check_response.text):
-        # ফর্ম থেকে confirm token বের করি (তোমার দেওয়া HTML-এ "t" আছে)
-        match = re.search(r'name="confirm"\s+value="([a-zA-Z0-9_-]+)"', check_response.text)
-        if match:
-            token = match.group(1)
-        else:
-            # ফলব্যাক (যদি অন্য ফরম্যাট হয়)
-            match = re.search(r'confirm=([a-zA-Z0-9_-]+)', check_response.text)
-            if match:
-                token = match.group(1)
-            else:
-                token = "t"
+    # confirm token বের করা
+    confirm_match = re.search(r'name="confirm"\s+value="([a-zA-Z0-9_-]+)"', html, re.IGNORECASE)
+    confirm = confirm_match.group(1) if confirm_match else "t"
     
-    # Step 2: এখন সঠিক টোকেন দিয়ে স্ট্রিমিং শুরু
-    if token:
-        params = {"confirm": token}
-        response = session.get(url, params=params, stream=True, allow_redirects=True)
-    else:
-        # কোনো ওয়ার্নিং নেই → সরাসরি স্ট্রিম
-        response = session.get(url, stream=True, allow_redirects=True)
+    # uuid বের করা (যদি থাকে)
+    uuid_match = re.search(r'name="uuid"\s+value="([a-zA-Z0-9_-]+)"', html, re.IGNORECASE)
+    uuid_val = uuid_match.group(1) if uuid_match else None
     
-    return response
+    # সঠিক ডাউনলোড লিংক (নতুন Google endpoint)
+    download_url = "https://drive.usercontent.google.com/download"
+    params = {
+        "id": file_id,
+        "export": "download",
+        "confirm": confirm
+    }
+    if uuid_val:
+        params["uuid"] = uuid_val
+    
+    # এখন আসল ফাইল স্ট্রিম
+    stream_response = session.get(download_url, params=params, stream=True, allow_redirects=True)
+    
+    # যদি এখনো HTML আসে তাহলে এরর দাও
+    if stream_response.status_code != 200 or "text/html" in stream_response.headers.get("Content-Type", "").lower():
+        raise Exception("Google Drive virus scan warning bypass failed. Please try again or use a different file.")
+    
+    return stream_response
 
 # Pixeldrain-এ আপলোড (streaming)
 def upload_to_pixeldrain(gdrive_stream, filename):
