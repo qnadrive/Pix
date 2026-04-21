@@ -7,7 +7,7 @@ import os
 app = Flask(__name__)
 
 # ================== তোমার Pixeldrain API Key এখানে দাও ==================
-PIXELDRAIN_API_KEY = "তোমার_api_key_এখানে_পেস্ট_করো"
+PIXELDRAIN_API_KEY = "644e8abe-4256-4b36-bb01-d7f57dd2c04f"
 
 # Google Drive file ID বের করার ফাংশন
 def get_file_id(url):
