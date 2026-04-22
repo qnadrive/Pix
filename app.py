@@ -15,7 +15,6 @@ PIXELDRAIN_API_KEY = "644e8abe-4256-4b36-bb01-d7f57dd2c04f"
 
 jobs = {}
 
-# Google Drive file ID বের করা
 def get_file_id(url):
     if "drive.google.com/file/d/" in url:
         return re.search(r"/file/d/([a-zA-Z0-9_-]+)", url).group(1)
@@ -23,7 +22,6 @@ def get_file_id(url):
         return re.search(r"id=([a-zA-Z0-9_-]+)", url).group(1)
     return None
 
-# Google Drive স্ট্রিম (virus scan warning হ্যান্ডেল)
 def get_gdrive_stream(file_id):
     session = requests.Session()
     url = f"https://docs.google.com/uc?export=download&id={file_id}"
@@ -46,21 +44,17 @@ def get_gdrive_stream(file_id):
     
     return response
 
-# ব্যাকগ্রাউন্ড আপলোড + অরিজিনাল ফাইল নাম সেভ
 def background_upload(job_id, file_id, custom_name):
     jobs[job_id]['status'] = 'running'
     try:
         gdrive_response = get_gdrive_stream(file_id)
         
-        # ================== অরিজিনাল ফাইল নাম বের করা ==================
-        original_name = f"file_{file_id[:8]}.bin"
-        cd = gdrive_response.headers.get("Content-Disposition", "")
-        if "filename=" in cd:
-            original_name = cd.split("filename=")[-1].strip('"').strip("'")
-        
-        # যদি কাস্টম নাম না দেওয়া হয় তাহলে অরিজিনাল নাম ব্যবহার
         if not custom_name:
-            custom_name = original_name
+            cd = gdrive_response.headers.get("Content-Disposition", "")
+            custom_name = cd.split("filename=")[-1].strip('"') if "filename=" in cd else f"file_{file_id[:8]}.bin"
+        
+        # অরিজিনাল ফাইল নাম স্টোর করা হচ্ছে
+        jobs[job_id]['filename'] = custom_name
         
         upload_url = f"https://pixeldrain.com/api/file/{custom_name}"
         auth = base64.b64encode(f":{PIXELDRAIN_API_KEY}".encode()).decode()
@@ -76,14 +70,12 @@ def background_upload(job_id, file_id, custom_name):
         if result.get("success") or "id" in result:
             jobs[job_id]['status'] = 'done'
             jobs[job_id]['result'] = f"https://pixeldrain.com/f/{result['id']}"
-            jobs[job_id]['original_name'] = original_name   # এখানে সেভ হয়েছে
         else:
             raise Exception(str(result))
     except Exception as e:
         jobs[job_id]['status'] = 'failed'
         jobs[job_id]['error'] = str(e)
 
-# ================== API এন্ডপয়েন্ট ==================
 @app.route("/api/submit", methods=["POST"])
 def api_submit():
     data = request.get_json()
@@ -95,7 +87,7 @@ def api_submit():
         return jsonify({"error": "Invalid Google Drive link!"}), 400
     
     job_id = str(uuid.uuid4())
-    jobs[job_id] = {'status': 'queued', 'result': None, 'error': None}
+    jobs[job_id] = {'status': 'queued', 'result': None, 'error': None, 'filename': custom_name or ''}
     
     thread = threading.Thread(target=background_upload, args=(job_id, file_id, custom_name))
     thread.daemon = True
@@ -109,7 +101,6 @@ def api_status(job_id):
         return jsonify({"error": "Job ID পাওয়া যায়নি!"}), 404
     return jsonify(jobs[job_id])
 
-# ================== DELETE API ==================
 @app.route("/api/delete/<pd_id>", methods=["DELETE"])
 def api_delete(pd_id):
     auth = base64.b64encode(f":{PIXELDRAIN_API_KEY}".encode()).decode()
