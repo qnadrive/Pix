@@ -106,3 +106,14 @@ def index():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    
+# ================== নতুন DELETE এন্ডপয়েন্ট (Pixeldrain থেকে ফাইল ডিলিট) ==================
+@app.route("/api/delete/<pd_id>", methods=["DELETE"])
+def api_delete(pd_id):
+    auth = base64.b64encode(f":{PIXELDRAIN_API_KEY}".encode()).decode()
+    headers = {
+        "Authorization": f"Basic {auth}",
+        "User-Agent": "Mozilla/5.0"
+    }
+    r = requests.delete(f"https://pixeldrain.com/api/file/{pd_id}", headers=headers)
+    return jsonify(r.json()), r.status_code
