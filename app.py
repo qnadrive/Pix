@@ -8,9 +8,8 @@ import uuid
 from flask_cors import CORS
 
 app = Flask(__name__)
-CORS(app)
+CORS(app)  # ওয়ার্ডপ্রেস থেকে কল করার জন্য দরকার
 
-# ================== তোমার Pixeldrain API Key ==================
 PIXELDRAIN_API_KEY = "644e8abe-4256-4b36-bb01-d7f57dd2c04f"
 
 jobs = {}
@@ -53,9 +52,6 @@ def background_upload(job_id, file_id, custom_name):
             cd = gdrive_response.headers.get("Content-Disposition", "")
             custom_name = cd.split("filename=")[-1].strip('"') if "filename=" in cd else f"file_{file_id[:8]}.bin"
         
-        # অরিজিনাল ফাইল নাম স্টোর করা হচ্ছে
-        jobs[job_id]['filename'] = custom_name
-        
         upload_url = f"https://pixeldrain.com/api/file/{custom_name}"
         auth = base64.b64encode(f":{PIXELDRAIN_API_KEY}".encode()).decode()
         headers = {"Authorization": f"Basic {auth}", "User-Agent": "Mozilla/5.0"}
@@ -76,6 +72,7 @@ def background_upload(job_id, file_id, custom_name):
         jobs[job_id]['status'] = 'failed'
         jobs[job_id]['error'] = str(e)
 
+# ================== API এন্ডপয়েন্ট (ওয়ার্ডপ্রেসের জন্য) ==================
 @app.route("/api/submit", methods=["POST"])
 def api_submit():
     data = request.get_json()
@@ -87,7 +84,7 @@ def api_submit():
         return jsonify({"error": "Invalid Google Drive link!"}), 400
     
     job_id = str(uuid.uuid4())
-    jobs[job_id] = {'status': 'queued', 'result': None, 'error': None, 'filename': custom_name or ''}
+    jobs[job_id] = {'status': 'queued', 'result': None, 'error': None}
     
     thread = threading.Thread(target=background_upload, args=(job_id, file_id, custom_name))
     thread.daemon = True
@@ -101,15 +98,10 @@ def api_status(job_id):
         return jsonify({"error": "Job ID পাওয়া যায়নি!"}), 404
     return jsonify(jobs[job_id])
 
-@app.route("/api/delete/<pd_id>", methods=["DELETE"])
-def api_delete(pd_id):
-    auth = base64.b64encode(f":{PIXELDRAIN_API_KEY}".encode()).decode()
-    headers = {"Authorization": f"Basic {auth}", "User-Agent": "Mozilla/5.0"}
-    r = requests.delete(f"https://pixeldrain.com/api/file/{pd_id}", headers=headers)
-    return jsonify(r.json()), r.status_code
-
-@app.route("/")
+# পুরনো ওয়েব UI (আগের মতো রাখা হলো)
+@app.route("/", methods=["GET", "POST"])
 def index():
+    # (আগের কোডটা এখানে রাখতে চাইলে বলো, এখন শুধু API ফোকাস করছি)
     return "API is running. Use /api/submit and /api/status/"
 
 if __name__ == "__main__":
