@@ -8,7 +8,7 @@ import uuid
 from flask_cors import CORS
 
 app = Flask(__name__)
-CORS(app)  # WordPress থেকে API কল করার জন্য
+CORS(app)
 
 # ================== তোমার Pixeldrain API Key ==================
 PIXELDRAIN_API_KEY = "644e8abe-4256-4b36-bb01-d7f57dd2c04f"
@@ -46,15 +46,24 @@ def get_gdrive_stream(file_id):
     
     return response
 
-# ব্যাকগ্রাউন্ড আপলোড
-def background_upload(job_id, file_id, custom_name):
+# ব্যাকগ্রাউন্ড আপলোড + আসল ফাইল নাম সংরক্ষণ
+def background_upload(job_id, file_id, custom_name_from_form):
     jobs[job_id]['status'] = 'running'
     try:
         gdrive_response = get_gdrive_stream(file_id)
         
-        if not custom_name:
+        # আসল Google Drive ফাইল নাম বের করা (যদি কাস্টম নাম না দেয়া হয়)
+        if not custom_name_from_form:
             cd = gdrive_response.headers.get("Content-Disposition", "")
-            custom_name = cd.split("filename=")[-1].strip('"') if "filename=" in cd else f"file_{file_id[:8]}.bin"
+            if "filename=" in cd:
+                custom_name = cd.split("filename=")[-1].strip('"')
+            else:
+                custom_name = f"file_{file_id[:8]}.bin"
+        else:
+            custom_name = custom_name_from_form
+        
+        # ফাইল নাম সংরক্ষণ (মনিটরিং পেইজের জন্য)
+        jobs[job_id]['filename'] = custom_name
         
         upload_url = f"https://pixeldrain.com/api/file/{custom_name}"
         auth = base64.b64encode(f":{PIXELDRAIN_API_KEY}".encode()).decode()
@@ -88,7 +97,12 @@ def api_submit():
         return jsonify({"error": "Invalid Google Drive link!"}), 400
     
     job_id = str(uuid.uuid4())
-    jobs[job_id] = {'status': 'queued', 'result': None, 'error': None}
+    jobs[job_id] = {
+        'status': 'queued',
+        'result': None,
+        'error': None,
+        'filename': custom_name or 'Processing...'   # ডিফল্ট
+    }
     
     thread = threading.Thread(target=background_upload, args=(job_id, file_id, custom_name))
     thread.daemon = True
@@ -102,7 +116,7 @@ def api_status(job_id):
         return jsonify({"error": "Job ID পাওয়া যায়নি!"}), 404
     return jsonify(jobs[job_id])
 
-# ================== নতুন DELETE API (Pixeldrain থেকে ফাইল ডিলিট) ==================
+# ================== DELETE API ==================
 @app.route("/api/delete/<pd_id>", methods=["DELETE"])
 def api_delete(pd_id):
     auth = base64.b64encode(f":{PIXELDRAIN_API_KEY}".encode()).decode()
@@ -113,7 +127,6 @@ def api_delete(pd_id):
     r = requests.delete(f"https://pixeldrain.com/api/file/{pd_id}", headers=headers)
     return jsonify(r.json()), r.status_code
 
-# পুরনো ওয়েব UI (যদি দরকার হয়)
 @app.route("/")
 def index():
     return "API is running. Use /api/submit and /api/status/"
