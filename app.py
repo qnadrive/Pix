@@ -8,8 +8,9 @@ import uuid
 from flask_cors import CORS
 
 app = Flask(__name__)
-CORS(app)  # ওয়ার্ডপ্রেস থেকে কল করার জন্য দরকার
+CORS(app)
 
+# এখানে তোমার পিক্সেলড্রেন API কী বসাও
 PIXELDRAIN_API_KEY = "644e8abe-4256-4b36-bb01-d7f57dd2c04f"
 
 jobs = {}
@@ -48,9 +49,16 @@ def background_upload(job_id, file_id, custom_name):
     try:
         gdrive_response = get_gdrive_stream(file_id)
         
+        # যদি ইউজার কাস্টম নাম না দেয়, তবে ড্রাইভের অরিজিনাল নাম নেওয়া হচ্ছে
         if not custom_name:
             cd = gdrive_response.headers.get("Content-Disposition", "")
-            custom_name = cd.split("filename=")[-1].strip('"') if "filename=" in cd else f"file_{file_id[:8]}.bin"
+            if "filename=" in cd:
+                custom_name = cd.split("filename=")[-1].strip('"')
+            else:
+                custom_name = f"file_{file_id[:8]}.bin"
+        
+        # জব ডিকশনারিতে নাম আপডেট করা হচ্ছে যাতে ওয়ার্ডপ্রেস এটা দেখতে পায়
+        jobs[job_id]['filename'] = custom_name
         
         upload_url = f"https://pixeldrain.com/api/file/{custom_name}"
         auth = base64.b64encode(f":{PIXELDRAIN_API_KEY}".encode()).decode()
@@ -72,7 +80,6 @@ def background_upload(job_id, file_id, custom_name):
         jobs[job_id]['status'] = 'failed'
         jobs[job_id]['error'] = str(e)
 
-# ================== API এন্ডপয়েন্ট (ওয়ার্ডপ্রেসের জন্য) ==================
 @app.route("/api/submit", methods=["POST"])
 def api_submit():
     data = request.get_json()
@@ -84,25 +91,24 @@ def api_submit():
         return jsonify({"error": "Invalid Google Drive link!"}), 400
     
     job_id = str(uuid.uuid4())
-    jobs[job_id] = {'status': 'queued', 'result': None, 'error': None}
+    # শুরুতে ইনকামিং নাম সেট করা হচ্ছে
+    jobs[job_id] = {'status': 'queued', 'result': None, 'error': None, 'filename': custom_name}
     
     thread = threading.Thread(target=background_upload, args=(job_id, file_id, custom_name))
     thread.daemon = True
     thread.start()
     
-    return jsonify({"success": True, "job_id": job_id, "message": "আপলোড কিউ হয়েছে!"})
+    return jsonify({"success": True, "job_id": job_id, "message": "কিউতে যোগ হয়েছে!"})
 
 @app.route("/api/status/<job_id>")
 def api_status(job_id):
     if job_id not in jobs:
-        return jsonify({"error": "Job ID পাওয়া যায়নি!"}), 404
+        return jsonify({"error": "Job ID not found!"}), 404
     return jsonify(jobs[job_id])
 
-# পুরনো ওয়েব UI (আগের মতো রাখা হলো)
-@app.route("/", methods=["GET", "POST"])
+@app.route("/")
 def index():
-    # (আগের কোডটা এখানে রাখতে চাইলে বলো, এখন শুধু API ফোকাস করছি)
-    return "API is running. Use /api/submit and /api/status/"
+    return "API is running. Monitoring active."
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
