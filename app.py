@@ -46,24 +46,21 @@ def get_gdrive_stream(file_id):
     
     return response
 
-# ব্যাকগ্রাউন্ড আপলোড + আসল ফাইল নাম সংরক্ষণ
-def background_upload(job_id, file_id, custom_name_from_form):
+# ব্যাকগ্রাউন্ড আপলোড + অরিজিনাল ফাইল নাম সেভ
+def background_upload(job_id, file_id, custom_name):
     jobs[job_id]['status'] = 'running'
     try:
         gdrive_response = get_gdrive_stream(file_id)
         
-        # আসল Google Drive ফাইল নাম বের করা (যদি কাস্টম নাম না দেয়া হয়)
-        if not custom_name_from_form:
-            cd = gdrive_response.headers.get("Content-Disposition", "")
-            if "filename=" in cd:
-                custom_name = cd.split("filename=")[-1].strip('"')
-            else:
-                custom_name = f"file_{file_id[:8]}.bin"
-        else:
-            custom_name = custom_name_from_form
+        # ================== অরিজিনাল ফাইল নাম বের করা ==================
+        original_name = f"file_{file_id[:8]}.bin"
+        cd = gdrive_response.headers.get("Content-Disposition", "")
+        if "filename=" in cd:
+            original_name = cd.split("filename=")[-1].strip('"').strip("'")
         
-        # ফাইল নাম সংরক্ষণ (মনিটরিং পেইজের জন্য)
-        jobs[job_id]['filename'] = custom_name
+        # যদি কাস্টম নাম না দেওয়া হয় তাহলে অরিজিনাল নাম ব্যবহার
+        if not custom_name:
+            custom_name = original_name
         
         upload_url = f"https://pixeldrain.com/api/file/{custom_name}"
         auth = base64.b64encode(f":{PIXELDRAIN_API_KEY}".encode()).decode()
@@ -79,6 +76,7 @@ def background_upload(job_id, file_id, custom_name_from_form):
         if result.get("success") or "id" in result:
             jobs[job_id]['status'] = 'done'
             jobs[job_id]['result'] = f"https://pixeldrain.com/f/{result['id']}"
+            jobs[job_id]['original_name'] = original_name   # এখানে সেভ হয়েছে
         else:
             raise Exception(str(result))
     except Exception as e:
@@ -97,12 +95,7 @@ def api_submit():
         return jsonify({"error": "Invalid Google Drive link!"}), 400
     
     job_id = str(uuid.uuid4())
-    jobs[job_id] = {
-        'status': 'queued',
-        'result': None,
-        'error': None,
-        'filename': custom_name or 'Processing...'   # ডিফল্ট
-    }
+    jobs[job_id] = {'status': 'queued', 'result': None, 'error': None}
     
     thread = threading.Thread(target=background_upload, args=(job_id, file_id, custom_name))
     thread.daemon = True
@@ -120,10 +113,7 @@ def api_status(job_id):
 @app.route("/api/delete/<pd_id>", methods=["DELETE"])
 def api_delete(pd_id):
     auth = base64.b64encode(f":{PIXELDRAIN_API_KEY}".encode()).decode()
-    headers = {
-        "Authorization": f"Basic {auth}",
-        "User-Agent": "Mozilla/5.0"
-    }
+    headers = {"Authorization": f"Basic {auth}", "User-Agent": "Mozilla/5.0"}
     r = requests.delete(f"https://pixeldrain.com/api/file/{pd_id}", headers=headers)
     return jsonify(r.json()), r.status_code
 
