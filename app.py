@@ -11,7 +11,7 @@ app = Flask(__name__)
 CORS(app)  # WordPress থেকে API কল করার জন্য
 
 # ================== তোমার Pixeldrain API Key ==================
-PIXELDRAIN_API_KEY = "তোমার_api_key_এখানে_পেস্ট_করো"
+PIXELDRAIN_API_KEY = "644e8abe-4256-4b36-bb01-d7f57dd2c04f"
 
 jobs = {}
 
