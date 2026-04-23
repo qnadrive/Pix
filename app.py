@@ -98,11 +98,23 @@ def api_status(job_id):
         return jsonify({"error": "Job ID পাওয়া যায়নি!"}), 404
     return jsonify(jobs[job_id])
 
+@app.route("/api/delete/<pd_id>", methods=["POST", "DELETE"])
+def api_delete(pd_id):
+    # পিক্সেলড্রেন থেকে ফাইল ডিলিট করার ফাংশন
+    auth = base64.b64encode(f":{PIXELDRAIN_API_KEY}".encode()).decode()
+    headers = {"Authorization": f"Basic {auth}"}
+    delete_url = f"https://pixeldrain.com/api/file/{pd_id}"
+    
+    try:
+        r = requests.delete(delete_url, headers=headers)
+        return jsonify({"success": True, "status_code": r.status_code, "message": "ফাইল ডিলিট রিকোয়েস্ট পাঠানো হয়েছে"})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
 # পুরনো ওয়েব UI (আগের মতো রাখা হলো)
 @app.route("/", methods=["GET", "POST"])
 def index():
-    # (আগের কোডটা এখানে রাখতে চাইলে বলো, এখন শুধু API ফোকাস করছি)
-    return "API is running. Use /api/submit and /api/status/"
+    return "API is running. Use /api/submit, /api/status/ and /api/delete/"
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
