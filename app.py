@@ -5,14 +5,20 @@ import base64
 import os
 import threading
 import uuid
+import queue # নতুন ইম্পোর্ট
 from flask_cors import CORS
 
 app = Flask(__name__)
-CORS(app)  # ওয়ার্ডপ্রেস থেকে কল করার জন্য দরকার
+CORS(app)
 
-PIXELDRAIN_API_KEY = "2757a03b-fba0-40a4-b0b8-c4b9074f0f76"
+PIXELDRAIN_API_KEY = "1a283756-5b5a-45c6-adcb-e0859d6e9d2f"
 
 jobs = {}
+
+# ================== Queue System ==================
+# একসাথে সর্বোচ্চ কয়টি ফাইল আপলোড হবে (512MB RAM এর জন্য 2 টি নিরাপদ)
+MAX_CONCURRENT_UPLOADS = 2
+upload_queue = queue.Queue()
 
 def get_file_id(url):
     if "drive.google.com/file/d/" in url:
@@ -57,7 +63,8 @@ def background_upload(job_id, file_id, custom_name):
         headers = {"Authorization": f"Basic {auth}", "User-Agent": "Mozilla/5.0"}
         
         def generate():
-            for chunk in gdrive_response.iter_content(chunk_size=1024*1024):
+            # Chunk size 512KB করা হলো মেমরি সেভ করার জন্য
+            for chunk in gdrive_response.iter_content(chunk_size=512*1024):
                 if chunk: yield chunk
         
         r = requests.put(upload_url, data=generate(), headers=headers, stream=True)
@@ -72,7 +79,21 @@ def background_upload(job_id, file_id, custom_name):
         jobs[job_id]['status'] = 'failed'
         jobs[job_id]['error'] = str(e)
 
-# ================== API এন্ডপয়েন্ট (ওয়ার্ডপ্রেসের জন্য) ==================
+# ================== Worker Thread ==================
+# এই ফাংশনটি সবসময় ব্যাকগ্রাউন্ডে চলবে এবং Queue থেকে একটি করে জব নিয়ে কাজ করবে
+def worker():
+    while True:
+        job_id, file_id, custom_name = upload_queue.get()
+        background_upload(job_id, file_id, custom_name)
+        upload_queue.task_done()
+
+# সার্ভার চালু হওয়ার সাথে সাথে Worker Thread গুলো চালু করে দেওয়া হলো
+for _ in range(MAX_CONCURRENT_UPLOAVER_UPLOADS):
+    t = threading.Thread(target=worker)
+    t.daemon = True
+    t.start()
+# ===================================================
+
 @app.route("/api/submit", methods=["POST"])
 def api_submit():
     data = request.get_json()
@@ -86,22 +107,19 @@ def api_submit():
     job_id = str(uuid.uuid4())
     jobs[job_id] = {'status': 'queued', 'result': None, 'error': None}
     
-    thread = threading.Thread(target=background_upload, args=(job_id, file_id, custom_name))
-    thread.daemon = True
-    thread.start()
+    # থ্রেড তৈরি করার বদলে Queue তে জব পাঠিয়ে দেওয়া হলো
+    upload_queue.put((job_id, file_id, custom_name))
     
-    return jsonify({"success": True, "job_id": job_id, "message": "আপলোড কিউ হয়েছে!"})
+    return jsonify({"success": True, "job_id": job_id, "message": "আপলোড কিউ হয়েছে!"})
 
 @app.route("/api/status/<job_id>")
 def api_status(job_id):
     if job_id not in jobs:
-        return jsonify({"error": "Job ID পাওয়া যায়নি!"}), 404
+        return jsonify({"error": "Job ID পাওয়া যায়নি!"}), 404
     return jsonify(jobs[job_id])
 
-# পুরনো ওয়েব UI (আগের মতো রাখা হলো)
 @app.route("/", methods=["GET", "POST"])
 def index():
-    # (আগের কোডটা এখানে রাখতে চাইলে বলো, এখন শুধু API ফোকাস করছি)
     return "API is running. Use /api/submit and /api/status/"
 
 if __name__ == "__main__":
