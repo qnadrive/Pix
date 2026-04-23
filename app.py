@@ -98,15 +98,19 @@ def api_status(job_id):
         return jsonify({"error": "Job ID পাওয়া যায়নি!"}), 404
     return jsonify(jobs[job_id])
 
+# ================== নতুন Delete এন্ডপয়েন্ট ==================
 @app.route("/api/delete/<pd_id>", methods=["DELETE"])
 def api_delete(pd_id):
-    url = f"https://pixeldrain.com/api/file/{pd_id}"
-    auth = base64.b64encode(f":{PIXELDRAIN_API_KEY}".encode()).decode()
-    headers = {"Authorization": f"Basic {auth}", "User-Agent": "Mozilla/5.0"}
-    
     try:
-        r = requests.delete(url, headers=headers)
-        return jsonify({"success": True, "status_code": r.status_code})
+        auth = base64.b64encode(f":{PIXELDRAIN_API_KEY}".encode()).decode()
+        headers = {"Authorization": f"Basic {auth}"}
+        r = requests.delete(f"https://pixeldrain.com/api/file/{pd_id}", headers=headers)
+        
+        # 200 মানে ডিলিট হয়েছে, 404 মানে আগেই ডিলিট হয়ে গেছে
+        if r.status_code == 200 or r.status_code == 404:
+            return jsonify({"success": True, "message": "Pixeldrain থেকে ডিলিট হয়েছে!"})
+        else:
+            return jsonify({"error": f"Failed to delete, status code: {r.status_code}"}), 400
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
