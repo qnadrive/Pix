@@ -8,7 +8,7 @@ import uuid
 from flask_cors import CORS
 
 app = Flask(__name__)
-CORS(app)  # ওয়ার্ডপ্রেস থেকে কল করার জন্য দরকার
+CORS(app)  # ওয়ার্ডপ্রেস থেকে কল করার জন্য দরকার
 
 PIXELDRAIN_API_KEY = "2757a03b-fba0-40a4-b0b8-c4b9074f0f76"
 
@@ -72,7 +72,7 @@ def background_upload(job_id, file_id, custom_name):
         jobs[job_id]['status'] = 'failed'
         jobs[job_id]['error'] = str(e)
 
-# ================== API এন্ডপয়েন্ট (ওয়ার্ডপ্রেসের জন্য) ==================
+# ================== API এন্ডপয়েন্ট (ওয়ার্ডপ্রেসের জন্য) ==================
 @app.route("/api/submit", methods=["POST"])
 def api_submit():
     data = request.get_json()
@@ -90,33 +90,18 @@ def api_submit():
     thread.daemon = True
     thread.start()
     
-    return jsonify({"success": True, "job_id": job_id, "message": "আপলোড কিউ হয়েছে!"})
+    return jsonify({"success": True, "job_id": job_id, "message": "আপলোড কিউ হয়েছে!"})
 
 @app.route("/api/status/<job_id>")
 def api_status(job_id):
     if job_id not in jobs:
-        return jsonify({"error": "Job ID পাওয়া যায়নি!"}), 404
+        return jsonify({"error": "Job ID পাওয়া যায়নি!"}), 404
     return jsonify(jobs[job_id])
 
-# ================== নতুন Delete এন্ডপয়েন্ট ==================
-@app.route("/api/delete/<pd_id>", methods=["DELETE"])
-def api_delete(pd_id):
-    try:
-        auth = base64.b64encode(f":{PIXELDRAIN_API_KEY}".encode()).decode()
-        headers = {"Authorization": f"Basic {auth}"}
-        r = requests.delete(f"https://pixeldrain.com/api/file/{pd_id}", headers=headers)
-        
-        # 200 মানে ডিলিট হয়েছে, 404 মানে আগেই ডিলিট হয়ে গেছে
-        if r.status_code == 200 or r.status_code == 404:
-            return jsonify({"success": True, "message": "Pixeldrain থেকে ডিলিট হয়েছে!"})
-        else:
-            return jsonify({"error": f"Failed to delete, status code: {r.status_code}"}), 400
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-# পুরনো ওয়েব UI (আগের মতো রাখা হলো)
+# পুরনো ওয়েব UI (আগের মতো রাখা হলো)
 @app.route("/", methods=["GET", "POST"])
 def index():
+    # (আগের কোডটা এখানে রাখতে চাইলে বলো, এখন শুধু API ফোকাস করছি)
     return "API is running. Use /api/submit and /api/status/"
 
 if __name__ == "__main__":
