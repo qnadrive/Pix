@@ -10,7 +10,7 @@ from flask_cors import CORS
 app = Flask(__name__)
 CORS(app)  # ওয়ার্ডপ্রেস থেকে কল করার জন্য দরকার
 
-PIXELDRAIN_API_KEY = "644e8abe-4256-4b36-bb01-d7f57dd2c04f"
+PIXELDRAIN_API_KEY = "2757a03b-fba0-40a4-b0b8-c4b9074f0f76"
 
 jobs = {}
 
